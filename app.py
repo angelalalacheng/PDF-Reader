@@ -13,7 +13,22 @@ import base64
 from htmlTemplate import expander_css, css, bot_template, user_template
 # Task 4: Process the Input PDF
 
+def process_file(pdf):
+    model_name = "thenlper/gte-small" # name of the model from HuggingFace
+    model_kwargs = {'device': 'cpu'} # specify the device on which the model will create the embeddings
+    encode_kwargs = {'normalize_embeddings': False} # whether embeddings should be normalized
 
+    embeddings = HuggingFaceEmbeddings(model_name, model_kwargs=model_kwargs, encode_kwargs=encode_kwargs)
+    # create a searchable database for the PDF document.
+    pdf_search = Chroma.from_document(embeddings, pdf)
+    '''
+    1. temperature: influences the diversity and creativity of the generated text
+    2. retriever: This is the vector store retriever that searches the database using a search configuration. It accepts the search_kwargs dictionary, which includes a k key-value pair to specify the number of neighbors to return
+    3. return_source_documents: This is a boolean that specifies whether the source document should be returned as well
+    '''
+    chain = ConversationalRetrievalChain.from_llm(ChatOpenAI(temperature=0.3), retriever=pdf_search.as_retriever(search_kwargs={"k": 2}), return_source_documents=True)
+    
+    return chain
 
 # Task 6: Method for Handling User Input
 
@@ -52,9 +67,20 @@ def main():
     st.session_state.col1.markdown(expander_css, unsafe_allow_html=True) 
 
 
-
     # Task 5: Load and Process the PDF 
-    
+    st.session_state.col1.subheader("Your documents")
+    st.session_state.pdf_doc = st.session_state.col1.file_uploader("Upload your PDF here and click on 'Process'")
+
+    if st.session_state.col1.button("Process", key='a'):
+        with st.spinner("Processing"):
+            if st.session_state.pdf_doc is not None:
+                with NamedTemporaryFile(suffix="pdf") as temp:
+                    temp.write(st.session_state.pdf_doc.getvalue())
+                    temp.seek(0)
+                    loader = PyPDFLoader(temp.name)
+                    pdf = loader.load()
+                    st.session_state.conversation = process_file(pdf)
+                    st.session_state.col1.markdown("Done processing. You may now ask a question.")
 
     
     # Task 7: Handle Query and Display Pages
